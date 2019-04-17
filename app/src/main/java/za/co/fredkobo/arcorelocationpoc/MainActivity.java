@@ -38,12 +38,10 @@ public class MainActivity extends AppCompatActivity {
     private ArSceneView arSceneView;
 
     // Renderables for this example
-    private ModelRenderable andyRenderable;
     private ViewRenderable exampleLayoutRenderable;
 
     // Our ARCore-Location scene
     private LocationScene locationScene;
-
 
     @Override
     @SuppressWarnings({"AndroidApiChecker", "FutureReturnValueIgnored"})
@@ -58,7 +56,6 @@ public class MainActivity extends AppCompatActivity {
                 ViewRenderable.builder()
                         .setView(this, R.layout.renderable_layout)
                         .build();
-
 
 
         CompletableFuture.allOf(
@@ -76,7 +73,6 @@ public class MainActivity extends AppCompatActivity {
 
                             try {
                                 exampleLayoutRenderable = exampleLayout.get();
-                                //andyRenderable = andy.get();
                                 hasFinishedLoading = true;
 
                             } catch (InterruptedException | ExecutionException ex) {
@@ -87,72 +83,59 @@ public class MainActivity extends AppCompatActivity {
                         });
 
 
+        // Set an update listener on the Scene that will hide the loading message once a Plane is
+        // detected.
+        arSceneView
+                .getScene()
+                .setOnUpdateListener(
+                        frameTime -> {
+                            if (!hasFinishedLoading) {
+                                return;
+                            }
 
-        try {
-            // Set an update listener on the Scene that will hide the loading message once a Plane is
-            // detected.
-            arSceneView
-                    .getScene()
-                    .setOnUpdateListener(
-                            frameTime -> {
-                                if (!hasFinishedLoading) {
-                                    return;
-                                }
+                            if (locationScene == null) {
+                                // If our locationScene object hasn't been setup yet, this is a good time to do it
+                                // We know that here, the AR components have been initiated.
+                                locationScene = new LocationScene(this, this, arSceneView);
+                                locationScene.setAnchorRefreshInterval(120);
 
-                                if (locationScene == null) {
-                                    // If our locationScene object hasn't been setup yet, this is a good time to do it
-                                    // We know that here, the AR components have been initiated.
-                                    locationScene = new LocationScene(this, this, arSceneView);
-                                    locationScene.setAnchorRefreshInterval(120);
+                                // Now lets create our location markers.
+                                // First, a layout
+                                LocationMarker layoutLocationMarker = new LocationMarker(
+                                        27.931336, -26.110890,
+                                        getExampleView()
+                                );
 
-                                    // Now lets create our location markers.
-                                    // First, a layout
-                                    LocationMarker layoutLocationMarker1 = new LocationMarker(
-                                            27.931336, -26.110890,
-                                            getExampleView()
-                                    );
+                                // An example "onRender" event, called every frame
+                                // Updates the layout with the markers distance
+                                layoutLocationMarker.setRenderEvent(new LocationNodeRender() {
+                                    @Override
+                                    public void render(LocationNode node) {
+                                        View eView = exampleLayoutRenderable.getView();
+                                        TextView distanceTextView = eView.findViewById(R.id.tv_distance);
+                                        double distance = node.getDistance() / 1000.0;
+                                        distanceTextView.setText(distance + " km");
+                                    }
+                                });
 
-                                    LocationMarker layoutLocationMarker2 = new LocationMarker(
-                                            28.041299, -26.141620,
-                                            getExampleView()
-                                    );
+                                // Adding the marker
+                                locationScene.mLocationMarkers.add(layoutLocationMarker);
+                            }
 
-                                    // An example "onRender" event, called every frame
-                                    // Updates the layout with the markers distance
-                                    layoutLocationMarker1.setRenderEvent(new LocationNodeRender() {
-                                        @Override
-                                        public void render(LocationNode node) {
-                                            View eView = exampleLayoutRenderable.getView();
-                                            TextView distanceTextView = eView.findViewById(R.id.tv_distance);
-                                            double distance = node.getDistance()/1000.0;
-                                            distanceTextView.setText(distance + " km");
-                                        }
-                                    });
+                            Frame frame = arSceneView.getArFrame();
+                            if (frame == null) {
+                                return;
+                            }
 
+                            if (frame.getCamera().getTrackingState() != TrackingState.TRACKING) {
+                                return;
+                            }
 
-                                    // Adding the marker
-                                    locationScene.mLocationMarkers.add(layoutLocationMarker1);
+                            if (locationScene != null) {
+                                locationScene.processFrame(frame);
+                            }
 
-                                }
-
-                                Frame frame = arSceneView.getArFrame();
-                                if (frame == null) {
-                                    return;
-                                }
-
-                                if (frame.getCamera().getTrackingState() != TrackingState.TRACKING) {
-                                    return;
-                                }
-
-                                if (locationScene != null) {
-                                    locationScene.processFrame(frame);
-                                }
-
-                            });
-        } catch (Exception ex){
-            Log.d("XXX", ex.getMessage());
-        }
-
+                        });
 
         // Lastly request CAMERA & fine location permission which is required by ARCore-Location.
         ARLocationPermissionHelper.requestPermission(this);
@@ -176,23 +159,6 @@ public class MainActivity extends AppCompatActivity {
             return false;
         });
 
-        return base;
-    }
-
-    /***
-     * Example Node of a 3D model
-     *
-     * @return
-     */
-    private Node getAndy() {
-        Node base = new Node();
-        base.setRenderable(andyRenderable);
-        Context c = this;
-        base.setOnTapListener((v, event) -> {
-            Toast.makeText(
-                    c, "Andy touched.", Toast.LENGTH_LONG)
-                    .show();
-        });
         return base;
     }
 
@@ -229,10 +195,6 @@ public class MainActivity extends AppCompatActivity {
             DemoUtils.displayError(this, "Unable to get camera", ex);
             finish();
             return;
-        }
-
-        if (arSceneView.getSession() != null) {
-            showLoadingMessage();
         }
     }
 
@@ -288,13 +250,5 @@ public class MainActivity extends AppCompatActivity {
                                     | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         }
-    }
-
-    private void showLoadingMessage() {
-
-    }
-
-    private void hideLoadingMessage() {
-
     }
 }
