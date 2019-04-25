@@ -3,10 +3,12 @@ package za.co.fredkobo.arcorelocationpoc;
 public class Position {
     private double latitude;
     private double longitude;
+    private String label;
 
-    public Position(double latitude, double longitude) {
+    public Position(double latitude, double longitude, String label) {
         this.latitude = latitude;
         this.longitude = longitude;
+        this.label = label;
     }
 
     public double getLatitude() {
@@ -23,5 +25,13 @@ public class Position {
 
     public void setLongitude(double longitude) {
         this.longitude = longitude;
+    }
+
+    public String getLabel() {
+        return label;
+    }
+
+    public void setLabel(String label) {
+        this.label = label;
     }
 }

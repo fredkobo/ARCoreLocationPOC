@@ -22,6 +22,8 @@ import com.google.ar.sceneform.Node;
 import com.google.ar.sceneform.rendering.ModelRenderable;
 import com.google.ar.sceneform.rendering.ViewRenderable;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
@@ -38,10 +40,12 @@ public class MainActivity extends AppCompatActivity {
     private ArSceneView arSceneView;
 
     // Renderables for this example
-    private ViewRenderable exampleLayoutRenderable;
+    private List<ViewRenderable> layoutRenderables = new ArrayList<>();
 
     // Our ARCore-Location scene
     private LocationScene locationScene;
+
+    private List<CompletableFuture<ViewRenderable>> viewRenderables = new ArrayList<>();
 
     @Override
     @SuppressWarnings({"AndroidApiChecker", "FutureReturnValueIgnored"})
@@ -51,36 +55,45 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         arSceneView = findViewById(R.id.ar_scene_view);
 
-        // Build a renderable from a 2D View.
-        CompletableFuture<ViewRenderable> exampleLayout =
-                ViewRenderable.builder()
-                        .setView(this, R.layout.renderable_layout)
-                        .build();
 
 
-        CompletableFuture.allOf(
-                exampleLayout)
-                .handle(
-                        (notUsed, throwable) -> {
-                            // When you build a Renderable, Sceneform loads its resources in the background while
-                            // returning a CompletableFuture. Call handle(), thenAccept(), or check isDone()
-                            // before calling get().
+        for(Position position: getMockPositions()){
+            // Build a renderable from a 2D View.
+            CompletableFuture<ViewRenderable> exampleLayout =
+                    ViewRenderable.builder()
+                            .setView(this, R.layout.renderable_layout)
+                            .build();
+            viewRenderables.add(exampleLayout);
+        }
 
-                            if (throwable != null) {
-                                DemoUtils.displayError(this, "Unable to load renderables", throwable);
+        for(CompletableFuture<ViewRenderable> renderableCompletableFuture: viewRenderables){
+            CompletableFuture.allOf(
+                    renderableCompletableFuture)
+                    .handle(
+                            (notUsed, throwable) -> {
+                                // When you build a Renderable, Sceneform loads its resources in the background while
+                                // returning a CompletableFuture. Call handle(), thenAccept(), or check isDone()
+                                // before calling get().
+
+                                if (throwable != null) {
+                                    DemoUtils.displayError(this, "Unable to load renderables", throwable);
+                                    return null;
+                                }
+
+                                try {
+                                    layoutRenderables.add(renderableCompletableFuture.get());
+                                    hasFinishedLoading = true;
+
+                                } catch (InterruptedException | ExecutionException ex) {
+                                    DemoUtils.displayError(this, "Unable to load renderables", ex);
+                                }
+
                                 return null;
-                            }
+                            });
+        }
 
-                            try {
-                                exampleLayoutRenderable = exampleLayout.get();
-                                hasFinishedLoading = true;
 
-                            } catch (InterruptedException | ExecutionException ex) {
-                                DemoUtils.displayError(this, "Unable to load renderables", ex);
-                            }
 
-                            return null;
-                        });
 
 
         // Set an update listener on the Scene that will hide the loading message once a Plane is
@@ -97,29 +110,49 @@ public class MainActivity extends AppCompatActivity {
                                 // If our locationScene object hasn't been setup yet, this is a good time to do it
                                 // We know that here, the AR components have been initiated.
                                 locationScene = new LocationScene(this, this, arSceneView);
-                                locationScene.setAnchorRefreshInterval(120);
+                                //locationScene.setAnchorRefreshInterval(120);
 
-                                // Now lets create our location markers.
-                                // First, a layout
-                                LocationMarker layoutLocationMarker = new LocationMarker(
-                                        27.931336, -26.110890,
-                                        getExampleView()
-                                );
+                                int i = 0;
+                                for(Position position : getMockPositions()){
+                                    // Now lets create our location markers.
+                                    // First, a layout
 
-                                // An example "onRender" event, called every frame
-                                // Updates the layout with the markers distance
-                                layoutLocationMarker.setRenderEvent(new LocationNodeRender() {
-                                    @Override
-                                    public void render(LocationNode node) {
-                                        View eView = exampleLayoutRenderable.getView();
-                                        TextView distanceTextView = eView.findViewById(R.id.tv_distance);
-                                        double distance = node.getDistance() / 1000.0;
-                                        distanceTextView.setText(distance + " km");
-                                    }
-                                });
+                                    Node base = new Node();
+                                    base.setRenderable(layoutRenderables.get(i));
+                                    Context c = this;
+                                    // Add  listeners etc here
+                                    View eView = layoutRenderables.get(i).getView();
+                                    eView.setOnTouchListener((v, event) -> {
+                                        Toast.makeText(
+                                                c, "Location marker " + position.getLabel() + " touched.", Toast.LENGTH_SHORT)
+                                                .show();
+                                        return false;
+                                    });
 
-                                // Adding the marker
-                                locationScene.mLocationMarkers.add(layoutLocationMarker);
+                                    LocationMarker layoutLocationMarker = new LocationMarker(
+                                            position.getLongitude(), position.getLatitude(),
+                                            base
+                                    );
+
+
+
+                                    // An example "onRender" event, called every frame
+                                    // Updates the layout with the markers distance
+                                    int finalI = i;
+                                    layoutLocationMarker.setRenderEvent(new LocationNodeRender() {
+                                        @Override
+                                        public void render(LocationNode node) {
+                                            View eView = layoutRenderables.get(finalI).getView();
+                                            TextView distanceTextView = eView.findViewById(R.id.tv_distance);
+                                            double distance = node.getDistance() / 1000.0;
+                                            distanceTextView.setText(distance + " km");
+                                        }
+                                    });
+
+                                    // Adding the marker
+                                    locationScene.mLocationMarkers.add(layoutLocationMarker);
+                                    i++;
+                                }
                             }
 
                             Frame frame = arSceneView.getArFrame();
@@ -141,26 +174,6 @@ public class MainActivity extends AppCompatActivity {
         ARLocationPermissionHelper.requestPermission(this);
     }
 
-    /**
-     * Example node of a layout
-     *
-     * @return
-     */
-    private Node getExampleView() {
-        Node base = new Node();
-        base.setRenderable(exampleLayoutRenderable);
-        Context c = this;
-        // Add  listeners etc here
-        View eView = exampleLayoutRenderable.getView();
-        eView.setOnTouchListener((v, event) -> {
-            Toast.makeText(
-                    c, "Location marker touched.", Toast.LENGTH_LONG)
-                    .show();
-            return false;
-        });
-
-        return base;
-    }
 
     /**
      * Make sure we call locationScene.resume();
@@ -251,4 +264,18 @@ public class MainActivity extends AppCompatActivity {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         }
     }
+
+    private List<Position> getMockPositions(){
+        List<Position> mockpos = new ArrayList<>();
+        mockpos.add(new Position(-26.110890,27.931336, "A"));
+        mockpos.add(new Position(-26.1187,27.9522, "B"));
+        mockpos.add(new Position(-26.1036,27.9459, "C"));
+        mockpos.add(new Position(-26.0998,27.9411, "D"));
+        mockpos.add(new Position(-26.128190,27.973400, "E"));
+        mockpos.add(new Position(-26.1254,27.9442, "F"));
+        mockpos.add(new Position(-26.1323,27.973400, "G"));
+        mockpos.add(new Position(-26.101,27.95, "H"));
+        return mockpos;
+    }
+
 }
