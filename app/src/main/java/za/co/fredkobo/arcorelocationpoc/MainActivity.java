@@ -1,28 +1,33 @@
 package za.co.fredkobo.arcorelocationpoc;
 
 import android.content.Context;
+import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.v7.app.AppCompatActivity;
-import android.os.Bundle;
-import android.util.Log;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import com.google.ar.core.Frame;
-import com.google.ar.core.Plane;
 import com.google.ar.core.Session;
 import com.google.ar.core.TrackingState;
 import com.google.ar.core.exceptions.CameraNotAvailableException;
 import com.google.ar.core.exceptions.UnavailableException;
 import com.google.ar.sceneform.ArSceneView;
 import com.google.ar.sceneform.Node;
-import com.google.ar.sceneform.rendering.ModelRenderable;
 import com.google.ar.sceneform.rendering.ViewRenderable;
+import com.google.gson.Gson;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.io.StringWriter;
+import java.io.Writer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -55,9 +60,9 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         arSceneView = findViewById(R.id.ar_scene_view);
 
+        List<Poi> poiList = getPoisFromFile();
 
-
-        for(Position position: getMockPositions()){
+        for (int i = 0; i < poiList.size(); i++) {
             // Build a renderable from a 2D View.
             CompletableFuture<ViewRenderable> exampleLayout =
                     ViewRenderable.builder()
@@ -66,7 +71,7 @@ public class MainActivity extends AppCompatActivity {
             viewRenderables.add(exampleLayout);
         }
 
-        for(CompletableFuture<ViewRenderable> renderableCompletableFuture: viewRenderables){
+        for (CompletableFuture<ViewRenderable> renderableCompletableFuture : viewRenderables) {
             CompletableFuture.allOf(
                     renderableCompletableFuture)
                     .handle(
@@ -93,9 +98,6 @@ public class MainActivity extends AppCompatActivity {
         }
 
 
-
-
-
         // Set an update listener on the Scene that will hide the loading message once a Plane is
         // detected.
         arSceneView
@@ -113,7 +115,7 @@ public class MainActivity extends AppCompatActivity {
                                 //locationScene.setAnchorRefreshInterval(120);
 
                                 int i = 0;
-                                for(Position position : getMockPositions()){
+                                for (Poi poi : poiList) {
                                     // Now lets create our location markers.
                                     // First, a layout
 
@@ -124,16 +126,15 @@ public class MainActivity extends AppCompatActivity {
                                     View eView = layoutRenderables.get(i).getView();
                                     eView.setOnTouchListener((v, event) -> {
                                         Toast.makeText(
-                                                c, "Location marker " + position.getLabel() + " touched.", Toast.LENGTH_SHORT)
+                                                c, poi.getShortName(), Toast.LENGTH_SHORT)
                                                 .show();
                                         return false;
                                     });
 
                                     LocationMarker layoutLocationMarker = new LocationMarker(
-                                            position.getLongitude(), position.getLatitude(),
+                                            poi.getLongitude(), poi.getLatitude(),
                                             base
                                     );
-
 
 
                                     // An example "onRender" event, called every frame
@@ -145,7 +146,7 @@ public class MainActivity extends AppCompatActivity {
                                             View eView = layoutRenderables.get(finalI).getView();
                                             TextView distanceTextView = eView.findViewById(R.id.tv_distance);
                                             double distance = node.getDistance() / 1000.0;
-                                            distanceTextView.setText(distance + " km");
+                                            distanceTextView.setText(String.format("%.2f", distance) + " km");
                                         }
                                     });
 
@@ -265,17 +266,31 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private List<Position> getMockPositions(){
-        List<Position> mockpos = new ArrayList<>();
-        mockpos.add(new Position(-26.110890,27.931336, "A"));
-        mockpos.add(new Position(-26.1187,27.9522, "B"));
-        mockpos.add(new Position(-26.1036,27.9459, "C"));
-        mockpos.add(new Position(-26.0998,27.9411, "D"));
-        mockpos.add(new Position(-26.128190,27.973400, "E"));
-        mockpos.add(new Position(-26.1254,27.9442, "F"));
-        mockpos.add(new Position(-26.1323,27.973400, "G"));
-        mockpos.add(new Position(-26.101,27.95, "H"));
-        return mockpos;
+    private List<Poi> getPoisFromFile() {
+        InputStream is = getResources().openRawResource(R.raw.poi);
+        Writer writer = new StringWriter();
+        char[] buffer = new char[1024];
+        try {
+            Reader reader = new BufferedReader(new InputStreamReader(is, "UTF-8"));
+            int n;
+            while ((n = reader.read(buffer)) != -1) {
+                writer.write(buffer, 0, n);
+            }
+        } catch (Exception ex) {
+
+        } finally {
+            try {
+                is.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+        String jsonString = writer.toString();
+        Gson gson = new Gson();
+        Poi[] pois = gson.fromJson(jsonString, Poi[].class);
+        List<Poi> poiList = Arrays.asList(pois);
+        return poiList;
     }
 
 }
